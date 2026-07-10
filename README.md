@@ -33,6 +33,7 @@ Proxmox VE · Ubuntu Server 22.04 · Windows Server 2022 · Wazuh 4.9 (OpenSearc
 - CloudTrail trail (`siem-lab-trail`) logging to S3 across all regions
 - Wazuh `aws-s3` wodle configured to pull CloudTrail logs from S3 every 5 minutes — pipeline confirmed end-to-end
 - Custom detection rule (rule 100002, level 10, MITRE T1087) written in `local_rules.xml` — elevates built-in level 3 CloudTrail alert to prioritised level 10 with MITRE Discovery tagging
+- IAM user `siem-lab` scoped to least privilege — `ReadOnlyAccess` detached, replaced with custom policy granting `s3:ListBucket` and `s3:GetObject` on the specific CloudTrail bucket only
 
 ---
 
@@ -65,8 +66,6 @@ All alerts confirmed in Wazuh dashboard with full MITRE ATT&CK tactic/technique 
 
 ---
 
-## Planned extension
+## Scope decision — AWS GuardDuty
 
-**AWS GuardDuty** — ML-based threat detection integrated into Wazuh via the findings feed. GuardDuty would add a second detection layer alongside the CloudTrail rule-based approach: anomaly detection on API behaviour rather than pattern matching on specific event names. Integration is scoped and ready; pending AWS account activation.
-
-Once active, the IAM policy for the `siem-lab` user will be narrowed from `ReadOnlyAccess` to S3 + GuardDuty permissions only.
+GuardDuty was evaluated as a second detection layer alongside CloudTrail — ML-based anomaly detection on API behaviour rather than pattern matching on specific event names. Descoped after confirming it is no longer covered under AWS free tier. The CloudTrail rule-based pipeline covers the core detection use case for this lab.
