@@ -6,7 +6,7 @@ Self-hosted security monitoring environment built on bare-metal Proxmox, with li
 
 ## Stack
 
-Proxmox VE · Ubuntu Server 22.04 · Windows Server 2022 · Wazuh 4.9 (OpenSearch) · Active Directory · AWS (CloudTrail, S3, IAM) · LVM · KVM
+Proxmox VE · Ubuntu Server 22.04 · Docker Compose · Windows Server 2022 · Wazuh 4.9 (OpenSearch) · Active Directory · AWS (CloudTrail, S3, IAM)
 
 ---
 
@@ -14,8 +14,7 @@ Proxmox VE · Ubuntu Server 22.04 · Windows Server 2022 · Wazuh 4.9 (OpenSearc
 
 **Infrastructure**
 - Bare-metal Proxmox hypervisor on a repurposed laptop — ethernet bridge networking, lid-sleep disabled for 24/7 uptime, static LAN IP
-- LVM storage expanded across two physical volumes from unpartitioned disk space, without touching the existing OS partition
-- Wazuh all-in-one deployment (manager + indexer + dashboard) on dedicated Ubuntu 22.04 VM — SSL certificate and OpenSearch auth configured end-to-end
+- Wazuh all-in-one stack (manager + indexer + dashboard) running via Docker Compose on a dedicated Ubuntu 22.04 VM
 
 **Endpoints**
 - Wazuh agent deployed on macOS (Apple Silicon) — live event stream confirmed in dashboard
@@ -34,6 +33,20 @@ Proxmox VE · Ubuntu Server 22.04 · Windows Server 2022 · Wazuh 4.9 (OpenSearc
 - Wazuh `aws-s3` wodle configured to pull CloudTrail logs from S3 every 5 minutes — pipeline confirmed end-to-end
 - Custom detection rule (rule 100002, level 10, MITRE T1087) written in `local_rules.xml` — elevates built-in level 3 CloudTrail alert to prioritised level 10 with MITRE Discovery tagging
 - IAM user `siem-lab` scoped to least privilege — `ReadOnlyAccess` detached, replaced with custom policy granting `s3:ListBucket` and `s3:GetObject` on the specific CloudTrail bucket only
+
+---
+
+## Architecture decisions
+
+**Wazuh on Docker Compose, not bare-metal**
+
+The lab started with a bare-metal Wazuh install — manager, indexer, and dashboard installed directly onto the Ubuntu VM. This worked for the initial phases but became increasingly difficult to recover from. The OpenSearch security layer (securityadmin, kibanaserver password sync, cert validation order) had a specific sequence that had to be followed exactly, and any deviation — a password change, a service restart out of order — could break the dashboard in ways that took hours to diagnose. The problem wasn't any single step; it was that the failure modes compounded and the recovery procedure had to be rebuilt from scratch each time.
+
+Migrating to Docker Compose eliminated that class of problem. The stack is now fully declarative — passwords set as environment variables, config files bind-mounted, certs generated once via the official generator image. A broken stack is `docker compose down -v && docker compose up -d`. The custom config (CloudTrail wodle, detection rules) lives in bind-mounted files outside the containers and survives redeployment. The trade-off is that Docker adds an abstraction layer between you and the Wazuh internals, which matters less here than having a lab that's actually usable.
+
+**IAM scoped to least privilege after pipeline confirmation**
+
+The `siem-lab` IAM user started with `ReadOnlyAccess` (broad, AWS-managed) to get the CloudTrail pipeline working end to end first. Once confirmed, the policy was replaced with a custom one granting only `s3:ListBucket` and `s3:GetObject` on the specific CloudTrail bucket. This means IAM enumeration calls now return `AccessDenied` for those credentials — which is correct. The detection rule fires on the CloudTrail event regardless of whether the call succeeded. Locking the service account down after validation is the right posture.
 
 ---
 
